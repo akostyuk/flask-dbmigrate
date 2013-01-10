@@ -1,0 +1,18 @@
+Flask-DBMigrate
+===============
+
+This is a simple wrapper for SQLAlchemy Migrate
+tool http://code.google.com/p/sqlalchemy-migrate, that provide
+schema change management for Flask and SQLAlchemy
+
+
+Requirements
+------------
+sqlalchemy-migrate
+Flask-SQLAlchemy
+Flask-Script
+
+
+Install
+-------
+    $ pip install flask-__name__
