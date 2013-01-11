@@ -22,10 +22,11 @@ setup(
     include_package_data=True,
     platforms='any',
     install_requires=[
+        'sqlalchemy <= 0.7.9'
+        'sqlalchemy-migrate',
         'Flask',
         'Flask-SQLAlchemy',
         'Flask-Script',
-        'sqlalchemy-migrate',
     ],
     classifiers=[
         'Environment :: Web Environment',
