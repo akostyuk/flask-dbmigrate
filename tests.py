@@ -67,7 +67,7 @@ class TestDBMigrateSubManager(unittest.TestCase):
         self.assertEquals(dbmigrate_manager.get_options(),
             manager.get_options())
 
-    def test_run_dbmigrate_submanager_test_command(self):
+    def test_run_dbmigrate_test(self):
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
 
@@ -126,6 +126,39 @@ class TestDBMigrateSubManager(unittest.TestCase):
 
         output = sys.stdout.getvalue().strip()
         self.assertEquals(output, 'No Changes!')
+        self.dbmigrate._drop()
+
+    def test_run_dbmigrate_schemamigrate_with_changes(self):
+        self.dbmigrate.init()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        class Test(self.app.db.Model):
+            __tablename__ = 'test'
+            id = self.app.db.Column('test_id', self.app.db.Integer,
+                primary_key=True)
+            column1 = self.app.db.Column(self.app.db.String(60))
+            column2 = self.app.db.Column(self.app.db.String(60))
+
+            def __init__(self, column1):
+                self.column1 = column1
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'schemamigration']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
+            'versions/001_auto_generated.py')
+
+        self.assertTrue(os.path.exists(migration))
+
+        self.dbmigrate._drop()
 
 if __name__ == '__main__':
     assert not hasattr(sys.stdout, 'getvalue')

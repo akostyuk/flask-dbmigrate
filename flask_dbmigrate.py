@@ -1,3 +1,4 @@
+import re
 import os
 from shutil import rmtree
 
@@ -57,6 +58,51 @@ class DBMigrate(object):
         else:
             return False
 
+    def _migration_exist(self):
+        '''Check if migration script already exist'''
+        db_version = api.db_version(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path) + 1
+        scripts_dir = os.path.join(self.sqlalchemy_migration_path, 'versions')
+        files = [f for f in os.listdir(scripts_dir) \
+            if os.path.isfile(os.path.join(scripts_dir, f))]
+        f = re.compile('^[0-9]+_.+\.py$')
+        scripts = sorted(filter(f.search, files))
+        if len(scripts) == 0:
+            return False
+        else:
+            latest_script = os.path.join(scripts_dir, scripts[-1])
+            with open(latest_script, 'rb') as s:
+                first_line = s.readline()
+            r = re.compile('^# __VERSION__: (?P<version>\d+)\n')
+            m = re.match(r, first_line)
+            if m:
+                version = m.group('version')
+                if int(version) != db_version:
+                    return False
+                else:
+                    return True
+            else:
+                return False
+
+    def _create_migration_script(self, migration_name, oldmodel, newmodel,
+                                    stdout=False):
+        '''Generate migration script'''
+        version = api.db_version(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path) + 1
+        migration = '{0}/versions/{1:03}_{2}.py'.format(
+            self.sqlalchemy_migration_path, version, migration_name)
+        script = api.make_update_script_for_model(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path, oldmodel, newmodel)
+        header = '# __VERSION__: {0}\n'.format(version)
+        script = header + script
+        if stdout:
+            print(script)
+        else:
+            with open(migration, 'wt') as f:
+                f.write(script)
+            print('New migration saved as {0}'.format(migration))
+            print('To apply migration, run: "manage.py dbmigrate upgrade"')
+
     def _drop(self):
         self.db.drop_all()
         if os.path.exists(self.sqlalchemy_migration_path):
@@ -73,12 +119,20 @@ class DBMigrate(object):
                 self.sqlalchemy_migration_path,
                 api.version(self.sqlalchemy_migration_path))
 
-    def schemamigrate(self):
+    def schemamigrate(self, migration_name=None, stdout=None):
         old_model = schema.MetaData(bind=self.db.engine, reflect=True)
         if 'migrate_version' in old_model.tables:
             old_model.remove(old_model.tables['migrate_version'])
         if not self._is_changed(old_model, self.db.metadata):
             print('No Changes!')
+        else:
+            # check if migration script exists
+            if self._migration_exist():
+                print('No Changes!')
+            else:
+                # create migration
+                self._create_migration_script(migration_name, old_model,
+                    self.db.metadata)
 
 
 manager = Manager(usage='Perform database schema change management')
@@ -98,7 +152,7 @@ def init():
 
 
 @manager.command
-def schemamigration():
+def schemamigration(migration_name='auto_generated', stdout=False):
     'Create migration'
     dbmigrate = DBMigrate(current_app)
-    dbmigrate.schemamigrate()
+    dbmigrate.schemamigrate(migration_name, stdout)
