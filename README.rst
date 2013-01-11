@@ -13,7 +13,3 @@ Requirements
 - Flask-SQLAlchemy
 - Flask-Script
 
-
-Install
--------
-    $ pip install flask-__name__
