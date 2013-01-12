@@ -229,6 +229,9 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
         self.assertRegexpMatches(output, pattern)
 
+    def test_run_dbmigrate_migrate_show(self):
+        pass
+
 
 def suite():
     suite = unittest.TestSuite()

@@ -58,26 +58,38 @@ class DBMigrate(object):
         else:
             return False
 
-    def _migration_exist(self):
-        '''Check if migration script already exist'''
-        db_version = api.db_version(self.sqlalchemy_database_uri,
-            self.sqlalchemy_migration_path) + 1
+    def _get_migration_scripts(self):
         scripts_dir = os.path.join(self.sqlalchemy_migration_path, 'versions')
         files = [f for f in os.listdir(scripts_dir) \
             if os.path.isfile(os.path.join(scripts_dir, f))]
         f = re.compile('^[0-9]+_.+\.py$')
-        scripts = sorted(filter(f.search, files))
+        scripts = tuple(sorted(filter(f.search, files)))
+        return scripts
+
+    def _get_script_version(self, script):
+        with open(script, 'r') as s:
+            first_line = s.readline()
+        r = re.compile('^# __VERSION__: (?P<version>\d+)\n')
+        m = re.match(r, first_line)
+        if m:
+            return int(m.group('version'))
+        else:
+            return None
+
+    def _migration_exist(self):
+        '''Check if migration script already exist'''
+        db_version = api.db_version(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path) + 1
+        scripts = self._get_migration_scripts()
         if len(scripts) == 0:
             return False
         else:
-            latest_script = os.path.join(scripts_dir, scripts[-1])
-            with open(latest_script, 'rb') as s:
-                first_line = s.readline()
-            r = re.compile('^# __VERSION__: (?P<version>\d+)\n')
-            m = re.match(r, first_line)
-            if m:
-                version = m.group('version')
-                if int(version) != db_version:
+            latest_script = os.path.join(os.path.join(
+                self.sqlalchemy_migration_path, 'versions'),
+                scripts[-1])
+            version = self._get_script_version(latest_script)
+            if version:
+                if version != db_version:
                     return False
                 else:
                     return True
@@ -108,6 +120,9 @@ class DBMigrate(object):
         if os.path.exists(self.sqlalchemy_migration_path):
             rmtree(self.sqlalchemy_migration_path)
 
+    def _list_migrations(self):
+        pass
+
     def init(self):
         self.db.create_all()
         if not os.path.exists(self.sqlalchemy_migration_path):
@@ -134,6 +149,9 @@ class DBMigrate(object):
                 self._create_migration_script(migration_name, old_model,
                     self.db.metadata, stdout)
 
+    def migrate(self, show=False):
+        if show:
+            self._list_migrations()
 
 manager = Manager(usage='Perform database schema change management')
 
@@ -156,3 +174,10 @@ def schemamigration(name='auto_generated', stdout=False):
     'Create migration'
     dbmigrate = DBMigrate(current_app)
     dbmigrate.schemamigrate(name, stdout)
+
+
+@manager.command
+def migrate(show=False):
+    'Migrate database'
+    dbmigrate = DBMigrate(current_app)
+    dbmigrate.migrate(show)
