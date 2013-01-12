@@ -10,4 +10,4 @@ install:
   - pip install -q Flask-SQLAlchemy
   - pip install -q Flask-Script
 # command to run tests
-script: python -m tests -b
+script: python tests.py
