@@ -3,6 +3,7 @@ import re
 import sys
 import unittest
 from shutil import rmtree
+from StringIO import StringIO
 
 from flask import Flask
 from flask.ext.script import Command, Manager
@@ -88,6 +89,11 @@ class DBMigrateSubManagerTestCase(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
+        self.output = StringIO()
+        sys.stdout = self.output
+
+    def tearDown(self):
+        self.output.close()
 
     def test_add_dbmigrate_submanager(self):
         dbmigrate_manager = Manager()
@@ -95,7 +101,7 @@ class DBMigrateSubManagerTestCase(unittest.TestCase):
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmigrate_manager)
 
-        self.assertIsInstance(manager._commands['dbmigrate'], Manager)
+        assert isinstance(manager._commands['dbmigrate'], Manager)
         self.assertEquals(dbmigrate_manager.parent, manager)
         self.assertEquals(dbmigrate_manager.get_options(),
             manager.get_options())
@@ -111,10 +117,7 @@ class DBMigrateSubManagerTestCase(unittest.TestCase):
         except SystemExit, e:
             self.assertEquals(e.code, 0)
 
-        if not hasattr(sys.stdout, 'getvalue'):
-            self.fail('need to run in buffered mode')
-        output = sys.stdout.getvalue().strip()
-        self.assertEquals(output, 'test ok')
+        assert 'test ok' in self.output.getvalue()
 
 
 class DBMigrateCommandsTestCase(unittest.TestCase):
@@ -125,8 +128,11 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.app.db = SQLAlchemy(self.app)
         self.Test = make_test_model(self.app.db)
         self.dbmigrate = DBMigrate(self.app)
+        self.output = StringIO()
+        sys.stdout = self.output
 
     def tearDown(self):
+        self.output.close()
         if os.path.exists(self.app.config['SQLALCHEMY_MIGRATE_REPO']):
             rmtree(self.app.config['SQLALCHEMY_MIGRATE_REPO'])
         if os.path.exists(rel('test.sqlite3')):
@@ -148,7 +154,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             self.app.config['SQLALCHEMY_MIGRATE_REPO']))
 
         # test if table test exist
-        self.assertEqual(self.app.db.metadata.tables['test'].name,
+        self.assertEquals(self.app.db.metadata.tables['test'].name,
             'test')
 
         # test insert
@@ -227,7 +233,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
         output = sys.stdout.getvalue().strip()
         pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
-        self.assertRegexpMatches(output, pattern)
+        self.assertTrue(re.search(pattern, output))
 
     def test_run_dbmigrate_migrate_show(self):
         pass
@@ -242,4 +248,4 @@ def suite():
 
 if __name__ == '__main__':
     assert not hasattr(sys.stdout, 'getvalue')
-    unittest.main(defaultTest='suite', buffer=True)
+    unittest.main(defaultTest='suite')
