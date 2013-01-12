@@ -132,7 +132,7 @@ class DBMigrate(object):
             else:
                 # create migration
                 self._create_migration_script(migration_name, old_model,
-                    self.db.metadata)
+                    self.db.metadata, stdout)
 
 
 manager = Manager(usage='Perform database schema change management')

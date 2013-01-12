@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import unittest
 from shutil import rmtree
@@ -212,8 +213,21 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
         self.assertTrue(os.path.exists(migration))
 
+    @with_database_changes
     def test_run_dbmigrate_schemamigrate_with_changes_stdout(self):
-        pass
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'schemamigration', '--stdout']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        output = sys.stdout.getvalue().strip()
+        pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
+        self.assertRegexpMatches(output, pattern)
 
 
 def suite():
