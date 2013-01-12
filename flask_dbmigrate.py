@@ -141,13 +141,14 @@ class DBMigrate(object):
         if len(scripts) > 0:
             print('')
             for script in scripts:
-                script_version = os.path.join(os.path.join(
-                    self.sqlalchemy_migration_path, 'versions'),
-                    script)
-                if script_version < db_version:
-                    print(' (*) {0}'.format(script.replace('.py', '')))
-                else:
-                    print(' ( ) {0}'.format(script.replace('.py', '')))
+                script_version = self._get_script_version(
+                    os.path.join(os.path.join(self.sqlalchemy_migration_path,
+                        'versions'), script))
+                if script_version:
+                    if script_version < db_version:
+                        print(' (*) {0}'.format(script.replace('.py', '')))
+                    else:
+                        print(' ( ) {0}'.format(script.replace('.py', '')))
             print('')
         else:
             print('No migrations!')
