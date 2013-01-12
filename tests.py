@@ -7,7 +7,7 @@ from flask import Flask
 from flask.ext.script import Command, Manager
 from flask.ext.sqlalchemy import SQLAlchemy
 
-from flask_dbmigrate import DBMigrate
+from flask_dbmigrate import DBMigrate, ImproperlyConfigured
 from flask_dbmigrate import manager as dbmanager
 
 
@@ -38,25 +38,28 @@ class TestCommand(Command):
         print('test ok')
 
 
-class TestDBMigrateSubManager(unittest.TestCase):
+class DBMigrateInitTestCase(unittest.TestCase):
+
+    def test_dbmigrate_init_no_app(self):
+        # DBMigrate always required app
+        self.assertRaises(TypeError, DBMigrate)
+
+    def test_dbmigrate_init_app_no_config(self):
+        app = Flask(__name__)
+        self.assertRaises(ImproperlyConfigured, DBMigrate, app=app)
+
+    def test_dbmigrate_init_app_config(self):
+        app = Flask(__name__)
+        app.config.from_object(TestConfig)
+        DBMigrate(app)
+
+
+class DBMigrateSubManagerTestCase(unittest.TestCase):
+
     def setUp(self):
         self.app = Flask(__name__)
-        self.app.config.from_object(TestConfig)
-        self.app.db = SQLAlchemy(self.app)
-        self.Test = make_test_model(self.app.db)
-        self.dbmigrate = DBMigrate(self.app)
-
-    def tearDown(self):
-        self.dbmigrate.db.drop_all()
-        if os.path.exists(self.app.config['SQLALCHEMY_MIGRATE_REPO']):
-            rmtree(self.app.config['SQLALCHEMY_MIGRATE_REPO'])
-        if os.path.exists(rel('test.sqlite3')):
-            os.remove(rel('test.sqlite3'))
 
     def test_add_dbmigrate_submanager(self):
-        # check settings first
-        self.assertIn('SQLALCHEMY_MIGRATE_REPO', self.app.config)
-
         dbmigrate_manager = Manager()
 
         manager = Manager(self.app)
@@ -82,6 +85,23 @@ class TestDBMigrateSubManager(unittest.TestCase):
             self.fail('need to run in buffered mode')
         output = sys.stdout.getvalue().strip()
         self.assertEquals(output, 'test ok')
+
+
+class DBMigrateCommandsTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.config.from_object(TestConfig)
+        self.app.db = SQLAlchemy(self.app)
+        self.Test = make_test_model(self.app.db)
+        self.dbmigrate = DBMigrate(self.app)
+
+    def tearDown(self):
+        self.dbmigrate.db.drop_all()
+        if os.path.exists(self.app.config['SQLALCHEMY_MIGRATE_REPO']):
+            rmtree(self.app.config['SQLALCHEMY_MIGRATE_REPO'])
+        if os.path.exists(rel('test.sqlite3')):
+            os.remove(rel('test.sqlite3'))
 
     def test_run_dbmigrate_init(self):
         self.dbmigrate._drop()
@@ -160,6 +180,14 @@ class TestDBMigrateSubManager(unittest.TestCase):
 
         self.dbmigrate._drop()
 
+
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.makeSuite(DBMigrateInitTestCase))
+    suite.addTest(unittest.makeSuite(DBMigrateSubManagerTestCase))
+    suite.addTest(unittest.makeSuite(DBMigrateCommandsTestCase))
+    return suite
+
 if __name__ == '__main__':
     assert not hasattr(sys.stdout, 'getvalue')
-    unittest.main(module=__name__, buffer=True, exit=False)
+    unittest.main(defaultTest='suite', buffer=True)
