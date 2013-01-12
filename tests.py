@@ -2,8 +2,11 @@ import os
 import re
 import sys
 import unittest
+import logging
 from shutil import rmtree
 from StringIO import StringIO
+
+from sqlalchemy import schema
 
 from flask import Flask
 from flask.ext.script import Command, Manager
@@ -166,6 +169,22 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         # drop
         self.dbmigrate._drop()
 
+    def test_run_dbmigrate_schemamigrate_no_repository(self):
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'schemamigration']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        output = sys.stdout.getvalue().strip()
+        self.assertEquals(output, 'You have no database under version '
+            'control. Try to "init" it first')
+
     @with_database
     def test_run_dbmigrate_schemamigrate_no_changes(self):
 
@@ -221,6 +240,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
     @with_database_changes
     def test_run_dbmigrate_schemamigrate_with_changes_stdout(self):
+
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
 
@@ -235,8 +255,38 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
         self.assertTrue(re.search(pattern, output))
 
-    def test_run_dbmigrate_migrate_show(self):
-        pass
+    @with_database
+    def test_run_dbmigrate_migrate_show_no_migrations(self):
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'migrate', '--show']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        assert 'No migrations!' in sys.stdout.getvalue().strip()
+
+    @with_database_changes
+    def test_run_dbmigrate_migrate_show_with_migrations(self):
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_column2')
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'migrate', '--show']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        assert '( ) 001_added_column2' in sys.stdout.getvalue().strip()
 
 
 def suite():
@@ -247,5 +297,4 @@ def suite():
     return suite
 
 if __name__ == '__main__':
-    assert not hasattr(sys.stdout, 'getvalue')
     unittest.main(defaultTest='suite')

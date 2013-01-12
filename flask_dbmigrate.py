@@ -9,6 +9,20 @@ from flask.ext.script import Manager
 from sqlalchemy import schema
 
 from migrate.versioning import api, schemadiff
+from migrate.exceptions import InvalidRepositoryError
+
+
+def with_version_control(command):
+    def wrapper(self, *args, **kwargs):
+        try:
+            api.db_version(self.sqlalchemy_database_uri,
+                self.sqlalchemy_migration_path)
+        except InvalidRepositoryError:
+            print('You have no database under version control. '
+                'Try to "init" it first')
+            return
+        command(self, *args, **kwargs)
+    return wrapper
 
 
 class ImproperlyConfigured(Exception):
@@ -63,7 +77,7 @@ class DBMigrate(object):
         files = [f for f in os.listdir(scripts_dir) \
             if os.path.isfile(os.path.join(scripts_dir, f))]
         f = re.compile('^[0-9]+_.+\.py$')
-        scripts = tuple(sorted(filter(f.search, files)))
+        scripts = sorted(filter(f.search, files))
         return scripts
 
     def _get_script_version(self, script):
@@ -113,15 +127,30 @@ class DBMigrate(object):
             with open(migration, 'wt') as f:
                 f.write(script)
             print('New migration saved as {0}'.format(migration))
-            print('To apply migration, run: "manage.py dbmigrate upgrade"')
+            print('To apply migration, run: "manage.py dbmigrate migrate"')
 
     def _drop(self):
         self.db.drop_all()
         if os.path.exists(self.sqlalchemy_migration_path):
             rmtree(self.sqlalchemy_migration_path)
 
-    def _list_migrations(self):
-        pass
+    def _show_migrations(self):
+        db_version = api.db_version(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path)
+        scripts = self._get_migration_scripts()
+        if len(scripts) > 0:
+            print('')
+            for script in scripts:
+                script_version = os.path.join(os.path.join(
+                    self.sqlalchemy_migration_path, 'versions'),
+                    script)
+                if script_version < db_version:
+                    print(' (*) {0}'.format(script.replace('.py', '')))
+                else:
+                    print(' ( ) {0}'.format(script.replace('.py', '')))
+            print('')
+        else:
+            print('No migrations!')
 
     def init(self):
         self.db.create_all()
@@ -134,6 +163,7 @@ class DBMigrate(object):
                 self.sqlalchemy_migration_path,
                 api.version(self.sqlalchemy_migration_path))
 
+    @with_version_control
     def schemamigrate(self, migration_name=None, stdout=None):
         old_model = schema.MetaData(bind=self.db.engine, reflect=True)
         if 'migrate_version' in old_model.tables:
@@ -149,9 +179,10 @@ class DBMigrate(object):
                 self._create_migration_script(migration_name, old_model,
                     self.db.metadata, stdout)
 
+    @with_version_control
     def migrate(self, show=False):
         if show:
-            self._list_migrations()
+            self._show_migrations()
 
 manager = Manager(usage='Perform database schema change management')
 
