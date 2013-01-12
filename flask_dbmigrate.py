@@ -152,7 +152,7 @@ def init():
 
 
 @manager.command
-def schemamigration(migration_name='auto_generated', stdout=False):
+def schemamigration(name='auto_generated', stdout=False):
     'Create migration'
     dbmigrate = DBMigrate(current_app)
-    dbmigrate.schemamigrate(migration_name, stdout)
+    dbmigrate.schemamigrate(name, stdout)

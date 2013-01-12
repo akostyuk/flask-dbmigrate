@@ -26,6 +26,35 @@ def make_test_model(db):
     return Test
 
 
+def with_database(test_method):
+    def wrapper(self):
+        self.dbmigrate.init()
+        test_method(self)
+        self.dbmigrate._drop()
+    return wrapper
+
+
+def with_database_changes(test_method):
+    def wrapper(self):
+        self.dbmigrate.init()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        class Test(self.app.db.Model):
+            __tablename__ = 'test'
+            id = self.app.db.Column('test_id', self.app.db.Integer,
+                primary_key=True)
+            column1 = self.app.db.Column(self.app.db.String(60))
+            column2 = self.app.db.Column(self.app.db.String(60))
+
+            def __init__(self, column1):
+                self.column1 = column1
+
+        test_method(self)
+        self.dbmigrate._drop()
+    return wrapper
+
+
 class TestConfig(object):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + rel('test.sqlite3')
@@ -97,14 +126,13 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.dbmigrate = DBMigrate(self.app)
 
     def tearDown(self):
-        self.dbmigrate.db.drop_all()
         if os.path.exists(self.app.config['SQLALCHEMY_MIGRATE_REPO']):
             rmtree(self.app.config['SQLALCHEMY_MIGRATE_REPO'])
         if os.path.exists(rel('test.sqlite3')):
             os.remove(rel('test.sqlite3'))
 
     def test_run_dbmigrate_init(self):
-        self.dbmigrate._drop()
+
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
 
@@ -131,8 +159,8 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         # drop
         self.dbmigrate._drop()
 
+    @with_database
     def test_run_dbmigrate_schemamigrate_no_changes(self):
-        self.dbmigrate.init()
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -146,22 +174,9 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
         output = sys.stdout.getvalue().strip()
         self.assertEquals(output, 'No Changes!')
-        self.dbmigrate._drop()
 
+    @with_database_changes
     def test_run_dbmigrate_schemamigrate_with_changes(self):
-        self.dbmigrate.init()
-
-        self.app.db = SQLAlchemy(self.app)
-
-        class Test(self.app.db.Model):
-            __tablename__ = 'test'
-            id = self.app.db.Column('test_id', self.app.db.Integer,
-                primary_key=True)
-            column1 = self.app.db.Column(self.app.db.String(60))
-            column2 = self.app.db.Column(self.app.db.String(60))
-
-            def __init__(self, column1):
-                self.column1 = column1
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -178,7 +193,27 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
         self.assertTrue(os.path.exists(migration))
 
-        self.dbmigrate._drop()
+    @with_database_changes
+    def test_run_dbmigrate_schemamigrate_with_changes_named(self):
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'schemamigration', '-n',
+        'migration_name']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
+            'versions/001_migration_name.py')
+
+        self.assertTrue(os.path.exists(migration))
+
+    def test_run_dbmigrate_schemamigrate_with_changes_stdout(self):
+        pass
 
 
 def suite():
