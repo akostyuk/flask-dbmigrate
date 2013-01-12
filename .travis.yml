@@ -1,0 +1,13 @@
+language: python
+python:
+  - "2.7"
+  - "3.2"
+# command to install dependencies
+install:
+  - pip install -q sqlalchemy==0.7.9
+  - pip install -q sqlalchemy-migrate
+  - pip install -q Flask
+  - pip install -q Flask-SQLAlchemy
+  - pip install -q Flask-Script
+# command to run tests
+script: python -m tests -b
