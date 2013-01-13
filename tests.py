@@ -156,15 +156,14 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.assertTrue(os.path.exists(
             self.app.config['SQLALCHEMY_MIGRATE_REPO']))
 
-        # test if table test exist
-        self.assertEquals(self.app.db.metadata.tables['test'].name,
-            'test')
+        migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
+            'versions/001_initial.py')
 
-        # test insert
-        test = self.Test('Test')
-        self.app.db.session.add(test)
-        self.app.db.session.commit()
-        self.assertEqual(len(self.Test.query.all()), 1)
+        self.assertTrue(os.path.exists(migration))
+
+        # test if table migrate_version
+        # self.assertEquals(self.app.db.metadata.tables['migrate_version'].name,
+        #     'migrate_version')
 
         # drop
         self.dbmigrate._drop()

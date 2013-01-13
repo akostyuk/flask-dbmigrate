@@ -67,6 +67,7 @@ class DBMigrate(object):
 
         diff = schemadiff.SchemaDiff(oldmodel, newmodel)
 
+        # TODO: Add check for tables_missing_from_A and tables_missing_from_B
         if diff.tables_different:
             return True
         else:
@@ -154,7 +155,6 @@ class DBMigrate(object):
             print('No migrations!')
 
     def init(self):
-        self.db.create_all()
         if not os.path.exists(self.sqlalchemy_migration_path):
             api.create(self.sqlalchemy_migration_path, 'database repository')
             api.version_control(self.sqlalchemy_database_uri,
@@ -163,6 +163,12 @@ class DBMigrate(object):
             api.version_control(self.sqlalchemy_database_uri,
                 self.sqlalchemy_migration_path,
                 api.version(self.sqlalchemy_migration_path))
+        # create initial migration script
+        old_model = schema.MetaData(bind=self.db.engine, reflect=True)
+        if 'migrate_version' in old_model.tables:
+            old_model.remove(old_model.tables['migrate_version'])
+        self._create_migration_script('initial', old_model,
+            self.db.metadata)
 
     @with_version_control
     def schemamigrate(self, migration_name=None, stdout=None):
