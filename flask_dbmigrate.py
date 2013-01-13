@@ -10,6 +10,7 @@ from sqlalchemy import schema
 
 from migrate.versioning import api, schemadiff
 from migrate.exceptions import InvalidRepositoryError
+from migrate.versioning.script.py import PythonScript
 
 
 def with_version_control(command):
@@ -112,7 +113,7 @@ class DBMigrate(object):
                 return False
 
     def _create_migration_script(self, migration_name, oldmodel, newmodel,
-                                    stdout=False):
+                                    stdout=False, quiet=False):
         '''Generate migration script'''
         version = api.db_version(self.sqlalchemy_database_uri,
             self.sqlalchemy_migration_path) + 1
@@ -127,8 +128,9 @@ class DBMigrate(object):
         else:
             with open(migration, 'wt') as f:
                 f.write(script)
-            print('New migration saved as {0}'.format(migration))
-            print('To apply migration, run: "manage.py dbmigrate migrate"')
+            if not quiet:
+                print('New migration saved as {0}'.format(migration))
+                print('To apply migration, run: "manage.py dbmigrate migrate"')
 
     def _drop(self):
         self.db.drop_all()
@@ -168,7 +170,10 @@ class DBMigrate(object):
         if 'migrate_version' in old_model.tables:
             old_model.remove(old_model.tables['migrate_version'])
         self._create_migration_script('initial', old_model,
-            self.db.metadata)
+            self.db.metadata, quiet=True)
+        p = PythonScript(os.path.join(
+            self.sqlalchemy_migration_path, 'versions/001_initial.py'))
+        p.run(self.db.engine, 1)
 
     @with_version_control
     def schemamigrate(self, migration_name=None, stdout=None):
