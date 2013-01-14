@@ -4,7 +4,7 @@ from shutil import rmtree
 
 from flask import current_app
 from flask.ext.sqlalchemy import SQLAlchemy
-from flask.ext.script import Manager
+from flask.ext.script import Manager, Command, Option
 
 from sqlalchemy import schema
 
@@ -173,6 +173,10 @@ class DBMigrate(object):
             api.upgrade(self.sqlalchemy_database_uri,
                 self.sqlalchemy_migration_path)
 
+    def _downgrade(self, version):
+        api.downgrade(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path, version)
+
     def init(self):
         if not os.path.exists(self.sqlalchemy_migration_path):
             api.create(self.sqlalchemy_migration_path, 'database repository')
@@ -207,7 +211,13 @@ class DBMigrate(object):
 
     @with_version_control
     def migrate(self, upgrade, version, show=False):
-        if show:
+        if version is not None:
+            db_version = self._get_db_version()
+            if db_version > version:
+                self._downgrade(version)
+            elif db_version < version:
+                self._upgrade(version)
+        elif show:
             self._show_migrations()
         elif upgrade:
             self._upgrade(version)
@@ -235,8 +245,17 @@ def schemamigration(name='auto_generated', stdout=False):
     dbmigrate.schemamigrate(name, stdout)
 
 
-@manager.command
-def migrate(upgrade=True, version=None, show=False):
-    'Migrate database'
-    dbmigrate = DBMigrate(current_app)
-    dbmigrate.migrate(upgrade, version, show)
+class Migrate(Command):
+
+    option_list = (
+        Option('--upgrade', '-u', default=True, action='store_true'),
+        Option('--show', '-s', default=False, action='store_true'),
+        Option('-v', dest='version', type=int, required=False),
+    )
+
+    def run(self, upgrade, version, show):
+        '''Migrate database'''
+        dbmigrate = DBMigrate(current_app)
+        dbmigrate.migrate(upgrade, version, show)
+
+manager.add_command('migrate', Migrate())

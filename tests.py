@@ -321,6 +321,24 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         # check if column "column2" exists in table "test"
         assert 'column2' in [c['name'] for c in i.get_columns('test')]
 
+    @with_database
+    def test_migrate_to_0(self):
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'migrate', '-v', '0']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        i = Inspector(self.dbmigrate.db.engine)
+
+        # check if table "test" does not exist
+        assert 'test' not in i.get_table_names()
+
 
 def suite():
     suite = unittest.TestSuite()
