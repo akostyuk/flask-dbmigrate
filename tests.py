@@ -10,6 +10,8 @@ from flask import Flask
 from flask.ext.script import Command, Manager
 from flask.ext.sqlalchemy import SQLAlchemy
 
+from sqlalchemy.engine.reflection import Inspector
+
 from flask_dbmigrate import DBMigrate, ImproperlyConfigured
 from flask_dbmigrate import manager as dbmanager
 
@@ -141,7 +143,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         if os.path.exists(rel('test.sqlite3')):
             os.remove(rel('test.sqlite3'))
 
-    def test_run_dbmigrate_init(self):
+    def test_init(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -164,7 +166,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         # drop
         self.dbmigrate._drop()
 
-    def test_run_dbmigrate_schemamigrate_no_repository(self):
+    def test_schemamigrate_no_repository(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -181,7 +183,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             'control. Try to "init" it first')
 
     @with_database
-    def test_run_dbmigrate_schemamigrate_no_changes(self):
+    def test_schemamigrate_no_changes(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -197,7 +199,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.assertEquals(output, 'No Changes!')
 
     @with_database_changes
-    def test_run_dbmigrate_schemamigrate_with_changes(self):
+    def test_schemamigrate_with_changes(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -215,7 +217,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.assertTrue(os.path.exists(migration))
 
     @with_database_changes
-    def test_run_dbmigrate_schemamigrate_with_changes_named(self):
+    def test_schemamigrate_with_changes_named(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -234,7 +236,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.assertTrue(os.path.exists(migration))
 
     @with_database_changes
-    def test_run_dbmigrate_schemamigrate_with_changes_stdout(self):
+    def test_schemamigrate_with_changes_stdout(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -251,7 +253,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
         self.assertTrue(re.search(pattern, output))
 
-    def test_run_dbmigrate_migrate_show_no_migrations(self):
+    def test_migrate_show_no_migrations(self):
 
         self.dbmigrate.init()
 
@@ -274,7 +276,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         self.dbmigrate._drop()
 
     @with_database_changes
-    def test_run_dbmigrate_migrate_show_with_migrations(self):
+    def test_migrate_show_with_migrations(self):
 
         self.dbmigrate.db = self.app.db
         self.dbmigrate.schemamigrate(migration_name='added_column2')
@@ -289,7 +291,35 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         except SystemExit, e:
             self.assertEquals(e.code, 0)
 
-        assert '( ) 002_added_column2' in sys.stdout.getvalue().strip()
+        out = sys.stdout.getvalue().strip()
+        assert '( ) 002_added_column2 (ver. 2)' in out
+
+    @with_database_changes
+    def test_migrate_upgrade(self):
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_column2')
+
+        manager = Manager(self.app)
+        manager.add_command('dbmigrate', dbmanager)
+
+        sys.argv = ['manage.py', 'dbmigrate', 'migrate']
+
+        try:
+            manager.run()
+        except SystemExit, e:
+            self.assertEquals(e.code, 0)
+
+        assert self.dbmigrate._get_db_version() == \
+            self.dbmigrate._get_repo_version()
+
+        i = Inspector(self.dbmigrate.db.engine)
+
+        # check if table "test" exist
+        assert 'test' in i.get_table_names()
+
+        # check if column "column2" exists in table "test"
+        assert 'column2' in [c['name'] for c in i.get_columns('test')]
 
 
 def suite():

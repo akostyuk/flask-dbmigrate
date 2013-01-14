@@ -10,7 +10,6 @@ from sqlalchemy import schema
 
 from migrate.versioning import api, schemadiff
 from migrate.exceptions import InvalidRepositoryError
-from migrate.versioning.script.py import PythonScript
 
 
 def with_version_control(command):
@@ -63,6 +62,15 @@ class DBMigrate(object):
         except AttributeError:
             return SQLAlchemy(self.app)
 
+    def _get_db_version(self):
+        '''Return current database version'''
+        return api.db_version(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path)
+
+    def _get_repo_version(self):
+        '''Return latest script version available in repo'''
+        return api.version(self.sqlalchemy_migration_path)
+
     def _is_changed(self, oldmodel, newmodel):
         '''Check if the model has been changed'''
 
@@ -96,8 +104,7 @@ class DBMigrate(object):
 
     def _migration_exist(self):
         '''Check if migration script already exist'''
-        db_version = api.db_version(self.sqlalchemy_database_uri,
-            self.sqlalchemy_migration_path) + 1
+        db_version = self._get_db_version() + 1
         scripts = self._get_migration_scripts()
         if len(scripts) == 0:
             return False
@@ -117,8 +124,7 @@ class DBMigrate(object):
     def _create_migration_script(self, migration_name, oldmodel, newmodel,
                                     stdout=False, quiet=False):
         '''Generate migration script'''
-        version = api.db_version(self.sqlalchemy_database_uri,
-            self.sqlalchemy_migration_path) + 1
+        version = self._get_db_version() + 1
         migration = '{0}/versions/{1:03}_{2}.py'.format(
             self.sqlalchemy_migration_path, version, migration_name)
         script = api.make_update_script_for_model(self.sqlalchemy_database_uri,
@@ -140,8 +146,7 @@ class DBMigrate(object):
             rmtree(self.sqlalchemy_migration_path)
 
     def _show_migrations(self):
-        db_version = api.db_version(self.sqlalchemy_database_uri,
-            self.sqlalchemy_migration_path)
+        db_version = self._get_db_version()
         scripts = self._get_migration_scripts()
         if len(scripts) > 0:
             print('')
@@ -151,16 +156,22 @@ class DBMigrate(object):
                         'versions'), script))
                 if script_version:
                     if script_version < db_version:
-                        print(' (*) {0}'.format(script.replace('.py', '')))
+                        print(' (*) {0} (ver. {1})'.format(
+                            script.replace('.py', ''), script_version))
                     else:
-                        print(' ( ) {0}'.format(script.replace('.py', '')))
+                        print(' ( ) {0} (ver. {1})'.format(
+                            script.replace('.py', ''), script_version))
             print('')
         else:
             print('No migrations!')
 
-    def _upgrade(self):
-        api.upgrade(self.sqlalchemy_database_uri,
-            self.sqlalchemy_migration_path)
+    def _upgrade(self, version=None):
+        if version:
+            api.upgrade(self.sqlalchemy_database_uri,
+                self.sqlalchemy_migration_path, version)
+        else:
+            api.upgrade(self.sqlalchemy_database_uri,
+                self.sqlalchemy_migration_path)
 
     def init(self):
         if not os.path.exists(self.sqlalchemy_migration_path):
@@ -195,11 +206,11 @@ class DBMigrate(object):
                     self.db.metadata, stdout)
 
     @with_version_control
-    def migrate(self, upgrade, show=False):
+    def migrate(self, upgrade, version, show=False):
         if show:
             self._show_migrations()
         elif upgrade:
-            self._upgrade()
+            self._upgrade(version)
 
 manager = Manager(usage='Perform database schema change management')
 
@@ -225,7 +236,7 @@ def schemamigration(name='auto_generated', stdout=False):
 
 
 @manager.command
-def migrate(upgrade=True, show=False):
+def migrate(upgrade=True, version=None, show=False):
     'Migrate database'
     dbmigrate = DBMigrate(current_app)
-    dbmigrate.migrate(upgrade, show)
+    dbmigrate.migrate(upgrade, version, show)
