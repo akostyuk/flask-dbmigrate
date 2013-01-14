@@ -23,47 +23,47 @@ management commands.
 Assume, you have an application somewhere in your project.
 Also, you need to define required SQLAlchemy settings in your application:
 
-.. code-block:: pycon
+```python
+from flask import Flask
+from flask.sqlalchemy import SQLAlchemy
 
-    from flask import Flask
-    from flask.sqlalchemy import SQLAlchemy
-    
-    # test settings
-    class MyAppSettings:
-        DEBUG = True
-        SQLALCHEMY_DATABASE_URI = 'sqlite:///test.sqlite3'
-        SQLALCHEMY_MIGRATE_REPO = 'migrations'
-    
-    
-    app = Flask(__name__)
-    app.config.from_object(MyAppSettings)
-    
-    
-    # Our test model
-    class Test(app.db.Model):
-        __tablename__ = 'test'
-        id = app.db.Column('test_id', app.db.Integer, primary_key=True)
-        column1 = app.db.Column(app.db.String(60))
-        def __init__(self, column1):
-            self.column1 = column1
-    
-    db = SQLAlchemy(app)
-    
-    # We need to place sqlalchemy object inside our app
-    app.db =db
+# test settings
+class MyAppSettings:
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///test.sqlite3'
+    SQLALCHEMY_MIGRATE_REPO = 'migrations'
+
+
+app = Flask(__name__)
+app.config.from_object(MyAppSettings)
+
+
+# Our test model
+class Test(app.db.Model):
+    __tablename__ = 'test'
+    id = app.db.Column('test_id', app.db.Integer, primary_key=True)
+    column1 = app.db.Column(app.db.String(60))
+    def __init__(self, column1):
+        self.column1 = column1
+
+db = SQLAlchemy(app)
+
+# We need to place sqlalchemy object inside our app
+app.db =db
+```
 
 Next we can create our sub-manager for database schema management
 commands, usually in the `manage.py` file:
 
-.. code-block:: pycon
+```python
+from flask.ext.script import Manager
+from flask.ext.dbmigrate import manager as dbmanager
 
-    from flask.ext.script import Manager
-    from flask.ext.dbmigrate import manager as dbmanager
-    
-    from myapp import app
-    
-    manager = Manager(app)
-    manager.add_command('dbmigrate', dbmanager)
+from myapp import app
+
+manager = Manager(app)
+manager.add_command('dbmigrate', dbmanager)
+```
 
 Now we can use all the Flask-DBMigrate commands:
 
