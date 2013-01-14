@@ -6,8 +6,6 @@ import logging
 from shutil import rmtree
 from StringIO import StringIO
 
-from sqlalchemy import schema
-
 from flask import Flask
 from flask.ext.script import Command, Manager
 from flask.ext.sqlalchemy import SQLAlchemy
@@ -34,6 +32,7 @@ def make_test_model(db):
 def with_database(test_method):
     def wrapper(self):
         self.dbmigrate.init()
+        self.dbmigrate._upgrade()
         test_method(self)
         self.dbmigrate._drop()
     return wrapper
@@ -42,6 +41,7 @@ def with_database(test_method):
 def with_database_changes(test_method):
     def wrapper(self):
         self.dbmigrate.init()
+        self.dbmigrate._upgrade()
 
         self.app.db = SQLAlchemy(self.app)
 
@@ -161,10 +161,6 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
 
         self.assertTrue(os.path.exists(migration))
 
-        # test if table migrate_version
-        # self.assertEquals(self.app.db.metadata.tables['migrate_version'].name,
-        #     'migrate_version')
-
         # drop
         self.dbmigrate._drop()
 
@@ -214,7 +210,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             self.assertEquals(e.code, 0)
 
         migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
-            'versions/001_auto_generated.py')
+            'versions/002_auto_generated.py')
 
         self.assertTrue(os.path.exists(migration))
 
@@ -233,7 +229,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             self.assertEquals(e.code, 0)
 
         migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
-            'versions/001_migration_name.py')
+            'versions/002_migration_name.py')
 
         self.assertTrue(os.path.exists(migration))
 
@@ -251,11 +247,18 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             self.assertEquals(e.code, 0)
 
         output = sys.stdout.getvalue().strip()
+
         pattern = re.compile('^# __VERSION__: (?P<version>\d+)\n')
         self.assertTrue(re.search(pattern, output))
 
-    @with_database
     def test_run_dbmigrate_migrate_show_no_migrations(self):
+
+        self.dbmigrate.init()
+
+        migration = os.path.join(self.app.config['SQLALCHEMY_MIGRATE_REPO'],
+            'versions/001_initial.py')
+        if os.path.exists(migration):
+            os.remove(migration)
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -268,6 +271,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
             self.assertEquals(e.code, 0)
 
         assert 'No migrations!' in sys.stdout.getvalue().strip()
+        self.dbmigrate._drop()
 
     @with_database_changes
     def test_run_dbmigrate_migrate_show_with_migrations(self):
@@ -285,7 +289,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         except SystemExit, e:
             self.assertEquals(e.code, 0)
 
-        assert '( ) 001_added_column2' in sys.stdout.getvalue().strip()
+        assert '( ) 002_added_column2' in sys.stdout.getvalue().strip()
 
 
 def suite():

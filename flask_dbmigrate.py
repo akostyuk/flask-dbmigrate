@@ -68,8 +68,10 @@ class DBMigrate(object):
 
         diff = schemadiff.SchemaDiff(oldmodel, newmodel)
 
-        # TODO: Add check for tables_missing_from_A and tables_missing_from_B
         if diff.tables_different:
+            return True
+        elif len(diff.tables_missing_from_A) > 0 or len(
+            diff.tables_missing_from_A) > 0:
             return True
         else:
             return False
@@ -156,6 +158,10 @@ class DBMigrate(object):
         else:
             print('No migrations!')
 
+    def _upgrade(self):
+        api.upgrade(self.sqlalchemy_database_uri,
+            self.sqlalchemy_migration_path)
+
     def init(self):
         if not os.path.exists(self.sqlalchemy_migration_path):
             api.create(self.sqlalchemy_migration_path, 'database repository')
@@ -171,9 +177,6 @@ class DBMigrate(object):
             old_model.remove(old_model.tables['migrate_version'])
         self._create_migration_script('initial', old_model,
             self.db.metadata, quiet=True)
-        p = PythonScript(os.path.join(
-            self.sqlalchemy_migration_path, 'versions/001_initial.py'))
-        p.run(self.db.engine, 1)
 
     @with_version_control
     def schemamigrate(self, migration_name=None, stdout=None):
@@ -192,9 +195,11 @@ class DBMigrate(object):
                     self.db.metadata, stdout)
 
     @with_version_control
-    def migrate(self, show=False):
+    def migrate(self, upgrade, show=False):
         if show:
             self._show_migrations()
+        elif upgrade:
+            self._upgrade()
 
 manager = Manager(usage='Perform database schema change management')
 
@@ -220,7 +225,7 @@ def schemamigration(name='auto_generated', stdout=False):
 
 
 @manager.command
-def migrate(show=False):
+def migrate(upgrade=True, show=False):
     'Migrate database'
     dbmigrate = DBMigrate(current_app)
-    dbmigrate.migrate(show)
+    dbmigrate.migrate(upgrade, show)
