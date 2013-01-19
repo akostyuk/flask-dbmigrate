@@ -130,6 +130,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self.app.config.from_object(TestConfig)
+        self.app.config['SQLALCHEMY_MIGRATE_REPO'] += self.id()
         self.app.db = SQLAlchemy(self.app)
         self.Test = make_test_model(self.app.db)
         self.dbmigrate = DBMigrate(self.app)
@@ -322,7 +323,7 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         assert 'column2' in [c['name'] for c in i.get_columns('test')]
 
     @with_database
-    def test_migrate_to_0(self):
+    def test_migrate_downgrade_to_0(self):
 
         manager = Manager(self.app)
         manager.add_command('dbmigrate', dbmanager)
@@ -340,11 +341,221 @@ class DBMigrateCommandsTestCase(unittest.TestCase):
         assert 'test' not in i.get_table_names()
 
 
+class DBMigrateRelationshipsTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.app.config.from_object(TestConfig)
+        # Use unique repository for each test
+        self.app.config['SQLALCHEMY_MIGRATE_REPO'] += self.id()
+        self.app.db = SQLAlchemy(self.app)
+        self.output = StringIO()
+        sys.stdout = self.output
+
+    def tearDown(self):
+        self.dbmigrate._drop()
+        self.output.close()
+        if os.path.exists(self.app.config['SQLALCHEMY_MIGRATE_REPO']):
+            rmtree(self.app.config['SQLALCHEMY_MIGRATE_REPO'])
+        if os.path.exists(rel('test.sqlite3')):
+            os.remove(rel('test.sqlite3'))
+
+    def test_one_to_many_relationship(self):
+
+        # initial "parent" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate = DBMigrate(self.app)
+        self.dbmigrate.init()
+        self.dbmigrate._upgrade()
+
+        # check that table "parent" has been properly created
+        assert 'parent' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        # add o2m rel to "child" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+            children = self.app.db.relationship("Child")
+
+        class Child(self.app.db.Model):
+            __tablename__ = 'child'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+            parent_id = self.app.db.Column(self.app.db.Integer,
+                self.app.db.ForeignKey('parent.id'))
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_child_table')
+        self.dbmigrate._upgrade()
+
+        # check that table "child" has been properly created
+        assert 'child' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        # downgrade to 1
+        self.dbmigrate.migrate(upgrade=False, version=1)
+
+        # check that table "child" has been properly deleted
+        assert 'child' not in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+    def test_many_to_one_relationship(self):
+
+        # initial "parent" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate = DBMigrate(self.app)
+        self.dbmigrate.init()
+        self.dbmigrate._upgrade()
+
+        # check that table "parent" has been properly created
+        assert 'parent' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        # add m2o rel to "child" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+            child_id = self.app.db.Column(self.app.db.Integer,
+                self.app.db.ForeignKey('child.id'))
+            child = self.app.db.relationship("Child")
+
+        class Child(self.app.db.Model):
+            __tablename__ = 'child'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_child_table')
+        self.dbmigrate._upgrade()
+
+        # check that table "child" has been properly created
+        assert 'child' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        # downgrade to 1
+        self.dbmigrate.migrate(upgrade=False, version=1)
+
+        # check that table "child" has been properly deleted
+        assert 'child' not in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+    def test_one_to_one_relationship(self):
+
+        # initial "parent" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate = DBMigrate(self.app)
+        self.dbmigrate.init()
+        self.dbmigrate._upgrade()
+
+        # check that table "parent" has been properly created
+        assert 'parent' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        # add o2o rel to "child" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'parent'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+            child = self.app.db.relationship("Child",
+                uselist=False, backref="parent")
+
+        class Child(self.app.db.Model):
+            __tablename__ = 'child'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_child_table')
+        self.dbmigrate._upgrade()
+
+        # check that table "child" has been properly created
+        assert 'child' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        # downgrade to 1
+        self.dbmigrate.migrate(upgrade=False, version=1)
+
+        # check that table "child" has been properly deleted
+        assert 'child' not in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+    def test_many_to_many_relationship(self):
+
+        # initial "left" table
+        class Parent(self.app.db.Model):
+            __tablename__ = 'left'
+            id = self.app.db.Column(self.app.db.Integer,
+                primary_key=True)
+
+        self.dbmigrate = DBMigrate(self.app)
+        self.dbmigrate.init()
+        self.dbmigrate._upgrade()
+
+        # check that table "left" has been properly created
+        assert 'left' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        self.app.db = SQLAlchemy(self.app)
+
+        # add m2m rel to "child" table through "association"
+        association_table = self.app.db.Table('association',
+            self.app.db.Model.metadata,
+            self.app.db.Column('left_id', self.app.db.Integer,
+                self.app.db.ForeignKey('left.id')),
+            self.app.db.Column('right_id', self.app.db.Integer,
+                self.app.db.ForeignKey('right.id'))
+        )
+
+        class Parent(self.app.db.Model):
+            __tablename__ = 'left'
+            id = self.app.db.Column(self.app.db.Integer, primary_key=True)
+            children = self.app.db.relationship("Child",
+                secondary=association_table)
+
+        class Child(self.app.db.Model):
+            __tablename__ = 'right'
+            id = self.app.db.Column(self.app.db.Integer, primary_key=True)
+
+        self.dbmigrate.db = self.app.db
+        self.dbmigrate.schemamigrate(migration_name='added_child_table')
+        self.dbmigrate._upgrade()
+
+        # check that table "association" has been properly created
+        assert 'association' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+        # check that table "right" has been properly created
+        assert 'right' in Inspector(self.dbmigrate.db.engine
+            ).get_table_names()
+
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(DBMigrateInitTestCase))
     suite.addTest(unittest.makeSuite(DBMigrateSubManagerTestCase))
     suite.addTest(unittest.makeSuite(DBMigrateCommandsTestCase))
+    suite.addTest(unittest.makeSuite(DBMigrateRelationshipsTestCase))
     return suite
 
 if __name__ == '__main__':
